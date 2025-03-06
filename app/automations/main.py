@@ -81,13 +81,20 @@ def init_driver(headless=False):
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--disable-infobars")
     
-    # Add headless mode only if specified
-    if headless:
+    # Check for environment variable to force headless mode
+    force_headless = os.environ.get('CHROME_HEADLESS', 'false').lower() in ('true', '1', 't')
+    
+    # Add headless mode if specified or forced by environment
+    if headless or force_headless:
+        print("Running Chrome in headless mode")
         chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--window-size=1920,1080")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--no-sandbox")
-        
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+    
     # Load the captcha solver extension (this extension will handle reCAPTCHA automatically)
     chrome_options.add_argument(
         Capsolver("CAP-F79C6D0E7A810348A201783E25287C6003CFB45BBDCB670F96E525E7C0132148").load()

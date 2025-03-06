@@ -1,16 +1,23 @@
 # Use Python 3.9 as base image
 FROM python:3.9-slim
 
-# Install Chrome dependencies
+# Add environment variable to force Chrome to use headless mode
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+ENV CHROME_HEADLESS=1 
+ENV SELENIUM_HEADLESS=1
+
+# Install Chrome dependencies - reduced set
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
-    unzip \
     curl \
     libglib2.0-0 \
     libnss3 \
     libx11-6 \
-    libx11-xcb1 \
+    libxcb1 \
     libxcomposite1 \
     libxcursor1 \
     libxdamage1 \
@@ -21,22 +28,22 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     libxss1 \
     libxtst6 \
+    ca-certificates \
+    fonts-liberation \
     libappindicator1 \
     libasound2 \
-    libatk1.0-0 \
     libatk-bridge2.0-0 \
-    libcairo2 \
+    libatk1.0-0 \
     libcups2 \
     libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgcc1 \
-    libgconf-2-4 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
     libstdc++6 \
-    xvfb \
-    fonts-liberation \
+    x11-apps \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -59,25 +66,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application
 COPY . .
 
-# Create directory for screenshots
+# Create directory for screenshots and data
 RUN mkdir -p app/static/screenshots
+RUN mkdir -p data
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
-ENV DISPLAY=:99
-
-# Create startup script
+# Create a diagnostic script to verify Chrome installation
 RUN echo '#!/bin/bash\n\
-# Start Xvfb with logging\n\
-echo "Starting Xvfb..."\n\
-Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset &\n\
-echo "Xvfb started. Sleeping for 10 seconds..."\n\
-sleep 10\n\
-echo "Starting Gunicorn..."\n\
-exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 120 app:app\n' > /app/start.sh && chmod +x /app/start.sh
+echo "Checking Chrome installation..."\n\
+which google-chrome\n\
+google-chrome --version\n\
+echo "Chrome is installed. Checking Python environment..."\n\
+python -c "import selenium; print(f\"Selenium version: {selenium.__version__}\")"\n\
+python -c "from selenium import webdriver; from selenium.webdriver.chrome.options import Options; print(\"Webdriver imports work.\")"\n\
+echo "Starting Flask application..."\n\
+exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 300 app:app\n' > /app/start.sh && chmod +x /app/start.sh
 
 # Run the startup script
 CMD ["/app/start.sh"] 
