@@ -6,12 +6,16 @@ instance_class: F2
 env_variables:
   FLASK_APP: "app.py"
   FLASK_ENV: "production"
+  PYTHONUNBUFFERED: "1"
 
 handlers:
   - url: /static
     static_dir: app/static
-    secure: always
 
   - url: /.*
     script: auto
     secure: always
+
+# Required for selenium/chrome
+build_env_variables:
+  GOOGLE_CHROME_CHANNEL: "stable"
