@@ -411,4 +411,15 @@ def api_status():
         "app": "running",
         "timestamp": datetime.datetime.now().isoformat()
     }
-    return jsonify(status) 
+    return jsonify(status)
+
+# Add a test route
+@bp.route('/test')
+def test():
+    """Simple test endpoint that doesn't require templates."""
+    test_data = {
+        "message": "The Flask application is running correctly",
+        "status": "ok",
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    return jsonify(test_data) 

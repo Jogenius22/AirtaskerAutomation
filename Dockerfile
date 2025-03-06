@@ -1,46 +1,59 @@
-# Use Python 3.11 as base image
-FROM python:3.11-slim
+# Use Python 3.9 as base image
+FROM python:3.9-slim
 
 # Add environment variable to force Chrome to use headless mode
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
+ENV FLASK_ENV=development
+ENV FLASK_DEBUG=1
 ENV CHROME_HEADLESS=1 
 ENV SELENIUM_HEADLESS=1
+ENV GUNICORN_CMD_ARGS="--log-level debug"
 
-# Install Chrome and dependencies
+# Install Chrome dependencies - reduced set
 RUN apt-get update && apt-get install -y \
     wget \
-    gnupg2 \
-    xvfb \
-    unzip \
+    gnupg \
+    curl \
+    libglib2.0-0 \
+    libnss3 \
+    libx11-6 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    ca-certificates \
     fonts-liberation \
+    libappindicator1 \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
-    libatspi2.0-0 \
     libcups2 \
     libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
+    libgdk-pixbuf2.0-0 \
     libgtk-3-0 \
     libnspr4 \
     libnss3 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxkbcommon0 \
-    libxrandr2 \
-    libxshmfence1 \
-    xdg-utils \
-    procps \
-    psmisc \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    x11-apps \
     && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Google Chrome
+RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && apt-get update \
+    && apt-get install -y ./google-chrome-stable_current_amd64.deb \
+    && rm google-chrome-stable_current_amd64.deb \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -59,91 +72,40 @@ COPY . .
 RUN mkdir -p app/static/screenshots
 RUN mkdir -p data
 
-# Create directories needed for Chrome and Xvfb
-RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix \
-    && mkdir -p /tmp/chrome && chmod 777 /tmp/chrome \
-    && mkdir -p /dev/shm && chmod 777 /dev/shm
-
-# Set environment variables
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
-ENV DISPLAY=:99
-ENV PYTHONUNBUFFERED=1
-ENV SELENIUM_HEADLESS=true
-ENV PORT=8080
-# Chrome flags for better extension support
-ENV CHROME_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --disable-web-security --allow-running-insecure-content --window-size=1280,800 --remote-debugging-port=9222 --memory-pressure-off --disable-extensions"
-# Set HOME directory for Chrome
-ENV HOME=/tmp/chrome
-# Use a lower memory ceiling for Chrome to prevent OOM issues
-ENV PYTHONIOENCODING=utf-8
-ENV MALLOC_TRIM_THRESHOLD_=100000
-ENV MALLOC_ARENA_MAX=2
-
-# Create a comprehensive startup script with proper error handling
+# Create a detailed diagnostic script with more debugging
 RUN echo '#!/bin/bash\n\
-set -e\n\
+echo "===== SYSTEM INFO =====" > /app/debug.log\n\
+uname -a >> /app/debug.log\n\
+echo "" >> /app/debug.log\n\
 \n\
-# Print environment for debugging\n\
-echo "Starting container with:"\n\
-echo "- Display: $DISPLAY"\n\
-echo "- Chrome args: $CHROME_ARGS"\n\
+echo "===== DIRECTORY STRUCTURE =====" >> /app/debug.log\n\
+find /app -type f -name "*.py" | sort >> /app/debug.log\n\
+echo "" >> /app/debug.log\n\
 \n\
-# Enable memory trimming\n\
-echo 1 > /proc/sys/vm/overcommit_memory || echo "Warning: Could not set overcommit_memory (expected in some environments)"\n\
+echo "===== CHROME INSTALLATION =====" >> /app/debug.log\n\
+which google-chrome >> /app/debug.log 2>&1\n\
+google-chrome --version >> /app/debug.log 2>&1\n\
+echo "" >> /app/debug.log\n\
 \n\
-# Ensure data directories exist and have correct permissions\n\
-mkdir -p app/static/screenshots data\n\
-chmod -R 777 app/static/screenshots data\n\
-ls -la app/static/screenshots data\n\
-echo "✅ Directory structure verified"\n\
+echo "===== PYTHON ENVIRONMENT =====" >> /app/debug.log\n\
+python --version >> /app/debug.log 2>&1\n\
+pip list >> /app/debug.log 2>&1\n\
+echo "" >> /app/debug.log\n\
 \n\
-# Aggressively clean up any existing Chrome processes\n\
-echo "Cleaning up any existing Chrome processes..."\n\
-pkill -9 chrome || true\n\
-pkill -9 Xvfb || true\n\
-killall -9 chrome || true\n\
-killall -9 chromedriver || true\n\
-echo "✅ Process cleanup completed"\n\
+echo "===== TESTING SELENIUM =====" >> /app/debug.log\n\
+python -c "import selenium; print(f\\"Selenium version: {selenium.__version__}\\")" >> /app/debug.log 2>&1\n\
+python -c "from selenium import webdriver; from selenium.webdriver.chrome.options import Options; print(\\"Selenium imports work.\\")" >> /app/debug.log 2>&1\n\
+echo "" >> /app/debug.log\n\
 \n\
-# Clear all Chrome cache directories\n\
-echo "Clearing Chrome cache directories..."\n\
-rm -rf /tmp/chrome/* /tmp/.org.chromium.Chromium* /tmp/.com.google.Chrome* 2>/dev/null || true\n\
-rm -rf /dev/shm/* 2>/dev/null || true\n\
-# Recreate the directories with proper permissions\n\
-mkdir -p /tmp/chrome\n\
-chmod -R 777 /tmp/chrome\n\
-mkdir -p /tmp/.X11-unix\n\
-chmod 1777 /tmp/.X11-unix\n\
-echo "✅ Chrome directories prepared"\n\
+echo "==== CHECKING APP STRUCTURE ====" >> /app/debug.log\n\
+python -c "import app; print(f\\"App imported successfully: {app.__file__}\\")" >> /app/debug.log 2>&1\n\
+python -c "import flask; print(f\\"Flask version: {flask.__version__}\\")" >> /app/debug.log 2>&1\n\
 \n\
-# Start virtual display with standard resolution\n\
-echo "Starting Xvfb virtual display on $DISPLAY"\n\
-Xvfb $DISPLAY -screen 0 1280x800x24 -ac +extension GLX +render -noreset > /dev/null 2>&1 &\n\
-XVFB_PID=$!\n\
+echo "Debug log created at /app/debug.log"\n\
+cat /app/debug.log\n\
 \n\
-# Verify Xvfb is running\n\
-sleep 2\n\
-if ! ps -p $XVFB_PID > /dev/null; then\n\
-    echo "❌ ERROR: Xvfb failed to start!"\n\
-    exit 1\n\
-fi\n\
-echo "✅ Xvfb started successfully (PID: $XVFB_PID)"\n\
-\n\
-# Test Chrome can launch in headless mode with lower timeout\n\
-echo "Testing Chrome launch..."\n\
-timeout 5s google-chrome --headless=new --disable-gpu --no-sandbox --disable-dev-shm-usage about:blank > /dev/null 2>&1 || echo "Chrome test completed with timeout (expected)"\n\
-echo "✅ Chrome test completed"\n\
-\n\
-# Print memory information\n\
-echo "Memory information:"\n\
-free -m || echo "free command not available"\n\
-\n\
-# Start the Flask application with gunicorn\n\
-echo "Starting Flask application with Gunicorn"\n\
-exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 300 app:app\n\
-' > /app/startup.sh \
-    && chmod +x /app/startup.sh
+echo "Starting Flask application with Gunicorn..."\n\
+exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 300 --log-level debug app:app\n' > /app/start.sh && chmod +x /app/start.sh
 
-# Command to run
-CMD ["/app/startup.sh"] 
+# Run the startup script
+CMD ["/app/start.sh"] 
