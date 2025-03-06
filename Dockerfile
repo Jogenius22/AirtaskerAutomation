@@ -71,12 +71,13 @@ ENV DISPLAY=:99
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
-# Start Xvfb\n\
+# Start Xvfb with logging\n\
+echo "Starting Xvfb..."\n\
 Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset &\n\
-sleep 5\n\
-# Start the app\n\
-exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app\n\
-' > /app/start.sh && chmod +x /app/start.sh
+echo "Xvfb started. Sleeping for 10 seconds..."\n\
+sleep 10\n\
+echo "Starting Gunicorn..."\n\
+exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 120 app:app\n' > /app/start.sh && chmod +x /app/start.sh
 
 # Run the startup script
 CMD ["/app/start.sh"] 
