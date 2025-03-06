@@ -2,11 +2,22 @@ import os
 import datetime
 import json
 import re
-from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, send_from_directory
+from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app, send_from_directory, jsonify
 from werkzeug.utils import secure_filename
 from app.forms import AccountForm, CityForm, MessageForm, ScheduleForm, SettingsForm
 import app.data_manager as dm
-from app.tasks import start_bot_task
+
+# Conditionally import automation-related modules
+AUTOMATION_DISABLED = os.environ.get('DISABLE_AUTOMATION', 'false').lower() == 'true'
+
+if not AUTOMATION_DISABLED:
+    from app.tasks import start_bot_task
+else:
+    # Define a dummy function for the disabled bot
+    def start_bot_task(account_id, city_id, message_id, max_posts=3, image_path=None, group_id=None):
+        dm.add_log("Automation is disabled in this deployment. Use the local version for full features.", 
+                  "warning", group_id=group_id)
+        return {"success": False, "message": "Automation disabled in cloud deployment"}
 
 bp = Blueprint('main', __name__)
 
@@ -29,71 +40,28 @@ class Pagination:
         return range(1, self.pages + 1)
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
 
 @bp.route('/')
-def index():
-    """Home page route."""
-    return render_template('index.html')
-
-@bp.route('/dashboard')
 def dashboard():
+    """Dashboard page showing active accounts and controls"""
     accounts = dm.get_accounts()
     cities = dm.get_cities()
     messages = dm.get_messages()
     
-    # Get the latest logs with proper error handling
-    try:
-        logs_data = dm.get_logs(page=1, per_page=5)  # Just get the latest 5 logs
-        print(f"Dashboard: Retrieved logs data with {logs_data.get('total', 0)} total logs")
-        
-        if logs_data is None or not isinstance(logs_data, dict) or 'items' not in logs_data:
-            print(f"Dashboard: Invalid logs data structure: {logs_data}")
-            # If logs_data is not properly structured, initialize a default structure
-            logs_data = {'items': [], 'page': 1, 'pages': 0, 'total': 0, 'per_page': 5}
-        elif not logs_data.get('items'):
-            print("Dashboard: No logs found to display")
-    except Exception as e:
-        print(f"Error getting logs for dashboard: {e}")
-        logs_data = {'items': [], 'page': 1, 'pages': 0, 'total': 0, 'per_page': 5}
-        
-    settings = dm.get_settings()  # Get application settings
+    # Get recent logs (first page only)
+    logs = dm.get_logs(page=1, per_page=5)
     
-    # Format datetime fields for display
-    for account in accounts:
-        if account.get('last_used'):
-            try:
-                account['last_used'] = datetime.datetime.fromisoformat(account['last_used'])
-            except (ValueError, TypeError) as e:
-                print(f"Error formatting last_used date for account {account.get('email')}: {e}")
-                account['last_used'] = None
+    # If automation is disabled, add a notification
+    cloud_mode = AUTOMATION_DISABLED
     
-    for city in cities:
-        if city.get('created_at'):
-            try:
-                city['created_at'] = datetime.datetime.fromisoformat(city['created_at'])
-            except (ValueError, TypeError) as e:
-                print(f"Error formatting created_at date for city {city.get('name')}: {e}")
-                city['created_at'] = None
-    
-    scheduled_runs = []
-    try:
-        schedules = dm.get_schedules()
-        for schedule in schedules:
-            if schedule.get('active'):
-                scheduled_runs.append(schedule)
-    except Exception as e:
-        print(f"Error getting schedules: {str(e)}")
-        
-    print(f"Rendering dashboard with {len(logs_data.get('items', []))} logs")
-    return render_template('dashboard.html',
-                          title='Dashboard',
+    return render_template('dashboard.html', 
                           accounts=accounts,
-                          cities=cities, 
+                          cities=cities,
                           messages=messages,
-                          logs=Pagination(logs_data),
-                          settings=settings,
-                          scheduled_runs=scheduled_runs)
+                          logs=logs.get('items', []),
+                          cloud_mode=cloud_mode)
 
 @bp.route('/accounts', methods=['GET', 'POST'])
 def accounts():
@@ -201,42 +169,54 @@ def schedules():
 
 @bp.route('/start', methods=['POST'])
 def start_bot():
-    try:
-        city_id = request.form.get('city')
-        message_id = request.form.get('message')
-        account_id = request.form.get('account')
-        max_posts = request.form.get('max_posts', '3')  # Default to 3 if not provided
-        
-        # Validate max_posts is a valid integer
-        try:
-            max_posts = int(max_posts)
-            if max_posts < 1:
-                max_posts = 1
-            elif max_posts > 20:
-                max_posts = 20
-        except (ValueError, TypeError):
-            max_posts = 3  # Default to 3 if not a valid number
-        
-        # Get the actual objects from our data files
-        account = dm.get_account_by_id(account_id)
-        city = dm.get_city_by_id(city_id)
-        message = dm.get_message_by_id(message_id)
-        
-        if not account or not city or not message:
-            flash('Missing required selections for bot operation', 'danger')
-            return redirect(url_for('main.dashboard'))
-        
-        # Log the attempt
-        dm.add_log(f"Bot started for {account['email']} in {city['name']} with max posts: {max_posts}", 'info')
-        
-        # Start the bot in a background thread
-        start_bot_task(account_id=account_id, city_id=city_id, message_id=message_id, max_posts=max_posts)
-        
-        flash(f'Bot started successfully with {account["email"]} in {city["name"]}!', 'success')
+    """Start the bot with the selected account, city, and message"""
+    account_id = request.form.get('account_id')
+    city_id = request.form.get('city_id')
+    message_id = request.form.get('message_id')
+    max_posts = int(request.form.get('max_posts', 3))
+    
+    if not account_id or not city_id or not message_id:
+        flash('Please select an account, city, and message template.', 'danger')
         return redirect(url_for('main.dashboard'))
-    except Exception as e:
-        flash(f'Error starting bot: {str(e)}', 'danger')
+    
+    account = dm.get_account(account_id)
+    city = dm.get_city(city_id)
+    message = dm.get_message(message_id)
+    
+    if not account or not city or not message:
+        flash('Invalid selection. Please try again.', 'danger')
         return redirect(url_for('main.dashboard'))
+    
+    # Check if automation is disabled
+    if AUTOMATION_DISABLED:
+        flash('Automation is disabled in this cloud deployment. Please use the local version for full features.', 'warning')
+        dm.add_log(f"Attempted to start bot with account {account['email']} in {city['name']} but automation is disabled.",
+                 "warning")
+        return redirect(url_for('main.dashboard'))
+    
+    # Get the image path if an image file was uploaded
+    image_path = None
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and file.filename != '' and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            image_path = file_path
+    
+    # Add a log entry for starting the bot
+    group_id = dm.generate_id()
+    dm.add_log(f"Starting bot for account {account['email']} in {city['name']}", "info", group_id=group_id)
+    
+    # Start the bot in a background thread
+    result = start_bot_task(account_id, city_id, message_id, max_posts, image_path, group_id)
+    
+    if result.get("success", False):
+        flash('Bot started successfully! Check logs for details.', 'success')
+    else:
+        flash(f"Failed to start bot: {result.get('message', 'Unknown error')}", 'danger')
+    
+    return redirect(url_for('main.logs'))
 
 @bp.route('/logs')
 def logs():
@@ -443,4 +423,15 @@ def screenshots():
 @bp.route('/screenshot/<filename>')
 def get_screenshot(filename):
     screenshots_dir = os.path.join(current_app.root_path, '..', 'screenshots')
-    return send_from_directory(screenshots_dir, filename) 
+    return send_from_directory(screenshots_dir, filename)
+
+# Add a new route for Cloud Run status
+@bp.route('/api/status')
+def api_status():
+    """API endpoint for checking system status"""
+    status = {
+        "app": "running",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "automation_enabled": not AUTOMATION_DISABLED
+    }
+    return jsonify(status) 

@@ -1,23 +1,10 @@
 # Use Python 3.9 as base image
 FROM python:3.9-slim
 
-# Install Chrome and its dependencies (updated method)
+# Install minimal dependencies
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    unzip \
     curl \
-    libglib2.0-0 \
-    libnss3 \
-    libfontconfig1 \
-    xvfb \
-    netcat-openbsd \
-    supervisor
-
-# Install Google Chrome (updated approach)
-RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && apt-get install -y ./google-chrome-stable_current_amd64.deb \
-    && rm google-chrome-stable_current_amd64.deb \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -26,44 +13,32 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies but exclude selenium and related packages
+RUN pip install --no-cache-dir flask==2.2.5 flask-wtf==1.2.1 python-dotenv==1.0.1 \
+    werkzeug==2.2.3 wtforms==3.1.2 gunicorn==21.2.0 waitress==3.0.2 \
+    requests==2.32.3 Pillow==10.2.0
 
-# Copy the rest of the application
-COPY . .
+# Copy the application code
+COPY app/__init__.py app/
+COPY app/forms.py app/
+COPY app/routes.py app/
+COPY app/data_manager.py app/
+COPY app/tasks.py app/
+COPY app/templates/ app/templates/
+COPY app/static/ app/static/
+COPY config.py .
+COPY app.py .
+COPY run.py .
 
-# Create directory for screenshots if it doesn't exist
-RUN mkdir -p app/static/screenshots
+# Create directory for data files
+RUN mkdir -p data
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
-ENV DISPLAY=:99
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+ENV DISABLE_AUTOMATION=true
 
-# Create a supervisord configuration to manage processes
-RUN echo '[supervisord]\n\
-nodaemon=true\n\
-\n\
-[program:xvfb]\n\
-command=Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset\n\
-priority=10\n\
-autorestart=true\n\
-\n\
-[program:gunicorn]\n\
-command=gunicorn --bind :8080 --workers 1 --threads 8 --timeout 120 app:app\n\
-priority=20\n\
-directory=/app\n\
-stdout_logfile=/dev/stdout\n\
-stdout_logfile_maxbytes=0\n\
-stderr_logfile=/dev/stderr\n\
-stderr_logfile_maxbytes=0\n\
-autorestart=true\n\
-startretries=5\n' > /etc/supervisor/conf.d/supervisord.conf
-
-# Create a simplified startup script
-RUN echo '#!/bin/bash\n\
-echo "Starting supervisor..."\n\
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/start.sh && chmod +x /app/start.sh
-
-# Run the startup script
-CMD ["/app/start.sh"] 
+# Start the Flask app with gunicorn
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 app:app 
