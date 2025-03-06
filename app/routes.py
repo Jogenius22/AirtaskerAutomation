@@ -422,4 +422,21 @@ def test():
         "status": "ok",
         "timestamp": datetime.datetime.now().isoformat()
     }
-    return jsonify(test_data) 
+    return jsonify(test_data)
+
+# Add a template test route
+@bp.route('/template-test')
+def template_test():
+    """Test endpoint for template rendering with error handling."""
+    try:
+        # Try to render a simple template
+        return render_template('base.html', title="Template Test")
+    except Exception as e:
+        # If template rendering fails, return detailed error information
+        error_info = {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "template_paths": current_app.jinja_loader.list_templates(),
+            "template_folder": current_app.template_folder
+        }
+        return jsonify(error_info), 500 

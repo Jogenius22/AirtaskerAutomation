@@ -1,5 +1,7 @@
 import os
-from flask import Flask, render_template, jsonify
+import sys
+import traceback
+from flask import Flask, render_template, jsonify, request
 from app import create_app
 
 app = create_app()
@@ -41,6 +43,33 @@ def debug():
         debug_info["chrome_version"] = f"check failed: {str(e)}"
     
     return jsonify(debug_info)
+
+# Add an error handler for 500 errors
+@app.errorhandler(500)
+def server_error(e):
+    """Handle internal server errors with detailed debugging information."""
+    # Get the traceback
+    tb = traceback.format_exception(*sys.exc_info())
+    
+    # Create a detailed error response
+    error_details = {
+        "error": str(e),
+        "traceback": tb,
+        "endpoint": request.endpoint,
+        "url": request.url,
+        "method": request.method,
+        "remote_addr": request.remote_addr,
+        "user_agent": str(request.user_agent)
+    }
+    
+    # Log the error
+    print(f"500 Error: {error_details}", file=sys.stderr)
+    
+    # Return a JSON response in debug mode, or a simple message in production
+    if app.debug:
+        return jsonify(error_details), 500
+    else:
+        return jsonify({"error": "Internal Server Error"}), 500
 
 if __name__ == '__main__':
     # Get port from environment variable or default to 8080
