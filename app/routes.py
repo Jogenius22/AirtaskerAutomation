@@ -6,18 +6,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from werkzeug.utils import secure_filename
 from app.forms import AccountForm, CityForm, MessageForm, ScheduleForm, SettingsForm
 import app.data_manager as dm
-
-# Conditionally import automation-related modules
-AUTOMATION_DISABLED = os.environ.get('DISABLE_AUTOMATION', 'false').lower() == 'true'
-
-if not AUTOMATION_DISABLED:
-    from app.tasks import start_bot_task
-else:
-    # Define a dummy function for the disabled bot
-    def start_bot_task(account_id, city_id, message_id, max_posts=3, image_path=None, group_id=None):
-        dm.add_log("Automation is disabled in this deployment. Use the local version for full features.", 
-                  "warning", group_id=group_id)
-        return {"success": False, "message": "Automation disabled in cloud deployment"}
+from app.tasks import start_bot_task
 
 bp = Blueprint('main', __name__)
 
@@ -53,15 +42,11 @@ def dashboard():
     # Get recent logs (first page only)
     logs = dm.get_logs(page=1, per_page=5)
     
-    # If automation is disabled, add a notification
-    cloud_mode = AUTOMATION_DISABLED
-    
     return render_template('dashboard.html', 
                           accounts=accounts,
                           cities=cities,
                           messages=messages,
-                          logs=logs.get('items', []),
-                          cloud_mode=cloud_mode)
+                          logs=logs.get('items', []))
 
 @bp.route('/accounts', methods=['GET', 'POST'])
 def accounts():
@@ -185,13 +170,6 @@ def start_bot():
     
     if not account or not city or not message:
         flash('Invalid selection. Please try again.', 'danger')
-        return redirect(url_for('main.dashboard'))
-    
-    # Check if automation is disabled
-    if AUTOMATION_DISABLED:
-        flash('Automation is disabled in this cloud deployment. Please use the local version for full features.', 'warning')
-        dm.add_log(f"Attempted to start bot with account {account['email']} in {city['name']} but automation is disabled.",
-                 "warning")
         return redirect(url_for('main.dashboard'))
     
     # Get the image path if an image file was uploaded
@@ -425,13 +403,12 @@ def get_screenshot(filename):
     screenshots_dir = os.path.join(current_app.root_path, '..', 'screenshots')
     return send_from_directory(screenshots_dir, filename)
 
-# Add a new route for Cloud Run status
+# API status endpoint for health checks
 @bp.route('/api/status')
 def api_status():
     """API endpoint for checking system status"""
     status = {
         "app": "running",
-        "timestamp": datetime.datetime.now().isoformat(),
-        "automation_enabled": not AUTOMATION_DISABLED
+        "timestamp": datetime.datetime.now().isoformat()
     }
     return jsonify(status) 

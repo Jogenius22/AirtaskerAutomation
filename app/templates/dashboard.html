@@ -1,17 +1,5 @@
 {% extends 'base.html' %} {% block title %}Dashboard - Airtasker Bot Manager{%
-endblock %} {% block content %} {% if cloud_mode %}
-<div class="alert alert-warning alert-dismissible fade show" role="alert">
-  <strong>Cloud Mode Enabled!</strong> Automation features are disabled in this
-  cloud deployment. For full functionality including Selenium automation, please
-  use the local version.
-  <button
-    type="button"
-    class="btn-close"
-    data-bs-dismiss="alert"
-    aria-label="Close"
-  ></button>
-</div>
-{% endif %}
+endblock %} {% block content %}
 
 <div class="row mb-4">
   <div class="col-md-12">
