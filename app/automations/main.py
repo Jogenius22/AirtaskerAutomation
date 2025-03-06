@@ -75,43 +75,59 @@ def save_screenshot(driver, prefix, group_id):
 # Initialize the Selenium driver
 # ------------------------------
 def init_driver(headless=False):
+    """
+    Initialize and configure Chrome webdriver with stealth settings
+    """
     user_agent = random.choice(USER_AGENTS)
     chrome_options = Options()
-    chrome_options.add_argument(f"--user-agent={user_agent}")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-infobars")
-    
-    # Check for environment variable to force headless mode
-    force_headless = os.environ.get('CHROME_HEADLESS', 'false').lower() in ('true', '1', 't')
-    
-    # Add headless mode if specified or forced by environment
-    if headless or force_headless:
-        print("Running Chrome in headless mode")
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--start-maximized")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--remote-debugging-port=9222")
-    
-    # Load the captcha solver extension (this extension will handle reCAPTCHA automatically)
+
+    # Use Chrome settings from environment variable if available
+    chrome_args = os.environ.get('CHROME_ARGS', '')
+    if chrome_args:
+        print(f"Using Chrome arguments from environment: {chrome_args}")
+        for arg in chrome_args.split():
+            chrome_options.add_argument(arg)
+    else:
+        # Default Chrome options if not provided by environment
+        chrome_options.add_argument(f"--user-agent={user_agent}")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument("--disable-infobars")
+        
+        # Check for environment variable to force headless mode
+        force_headless = os.environ.get('SELENIUM_HEADLESS', 'false').lower() in ('true', '1', 't')
+        
+        # Add headless mode if specified or forced by environment
+        if headless or force_headless:
+            print("Running Chrome in headless mode")
+            chrome_options.add_argument("--headless=new")
+            chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument("--start-maximized")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+
+    # Enable more verbose logging in container environment
+    if 'KUBERNETES_SERVICE_HOST' in os.environ or 'CONTAINER' in os.environ:
+        print("Running in container environment - enabling verbose logging")
+        chrome_options.add_argument("--enable-logging")
+        chrome_options.add_argument("--v=1")
+
+    # Load the captcha solver extension
     chrome_options.add_argument(
         Capsolver("CAP-F79C6D0E7A810348A201783E25287C6003CFB45BBDCB670F96E525E7C0132148").load()
     )
 
     # Install chromedriver if not present
     chromedriver_autoinstaller.install()
-    driver = webdriver.Chrome(options=chrome_options)
     
-    # Set window size if not headless
-    if not headless:
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
         driver.set_window_size(1280, 800)
-        
-    # Additional stealth settings that work in both headless and regular mode
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
-    return driver
+        print("Chrome WebDriver initialized successfully")
+        return driver
+    except Exception as e:
+        print(f"Error initializing Chrome WebDriver: {e}")
+        raise
 
 
 # ------------------------------
