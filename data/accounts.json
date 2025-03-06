@@ -1,0 +1,8 @@
+[
+  {
+    "id": "sample1",
+    "email": "example@example.com",
+    "active": true,
+    "last_used": "2023-07-15T12:00:00"
+  }
+]

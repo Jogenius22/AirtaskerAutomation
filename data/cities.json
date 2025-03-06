@@ -1,0 +1,25 @@
+[
+  {
+    "id": "city1",
+    "name": "Sydney",
+    "radius": 25
+  },
+  {
+    "id": "fe6c780e-abe9-47e6-896e-171184f8c522",
+    "name": "Melbourne",
+    "radius": 100,
+    "created_at": "2025-03-02T15:01:16.462624"
+  },
+  {
+    "id": "ee6e2e2a-69bc-455b-b07d-b656c2808bdf",
+    "name": "Brisbane",
+    "radius": 80,
+    "created_at": "2025-03-02T15:01:24.184853"
+  },
+  {
+    "id": "6fa29a88-8109-403c-ad0a-45011fd4e720",
+    "name": "london",
+    "radius": 100,
+    "created_at": "2025-03-03T16:26:36.703580"
+  }
+]
