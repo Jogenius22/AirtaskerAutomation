@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libnss3 \
     libfontconfig1 \
-    xvfb
+    xvfb \
+    netcat-openbsd
 
 # Install Google Chrome (updated approach)
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
@@ -36,6 +37,16 @@ RUN mkdir -p app/static/screenshots
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
+ENV GUNICORN_CMD_ARGS="--timeout 120 --workers 1 --threads 8 --bind 0.0.0.0:8080"
 
-# Run with xvfb for headless Chrome operation
-CMD ["xvfb-run", "-a", "gunicorn", "-b", "0.0.0.0:8080", "app:app"] 
+# Create a simpler startup script for Cloud Run
+RUN echo '#!/bin/bash\n\
+# Start Xvfb in the background\n\
+Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &\n\
+export DISPLAY=:99\n\
+\n\
+# Start the application with gunicorn\n\
+exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 120 app:app\n' > /app/start.sh && chmod +x /app/start.sh
+
+# Run the startup script
+CMD ["/app/start.sh"] 
