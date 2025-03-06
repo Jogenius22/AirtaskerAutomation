@@ -14,9 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY simplified.py .
 COPY app/ app/
 
-# Create data directory and ensure it's accessible
+# Create data directory
 RUN mkdir -p app/data
-COPY app/data/*.json app/data/
 
 # Expose the port the app runs on
 EXPOSE 8080
