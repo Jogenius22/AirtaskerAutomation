@@ -29,10 +29,14 @@ class Pagination:
         return range(1, self.pages + 1)
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
 
 @bp.route('/')
+def index():
+    """Home page route."""
+    return render_template('index.html')
+
+@bp.route('/dashboard')
 def dashboard():
     accounts = dm.get_accounts()
     cities = dm.get_cities()

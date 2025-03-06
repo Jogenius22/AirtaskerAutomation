@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y \
     libnss3 \
     libfontconfig1 \
     xvfb \
-    netcat-openbsd
+    netcat-openbsd \
+    supervisor
 
 # Install Google Chrome (updated approach)
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
@@ -37,16 +38,32 @@ RUN mkdir -p app/static/screenshots
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
-ENV GUNICORN_CMD_ARGS="--timeout 120 --workers 1 --threads 8 --bind 0.0.0.0:8080"
+ENV DISPLAY=:99
 
-# Create a simpler startup script for Cloud Run
-RUN echo '#!/bin/bash\n\
-# Start Xvfb in the background\n\
-Xvfb :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &\n\
-export DISPLAY=:99\n\
+# Create a supervisord configuration to manage processes
+RUN echo '[supervisord]\n\
+nodaemon=true\n\
 \n\
-# Start the application with gunicorn\n\
-exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 120 app:app\n' > /app/start.sh && chmod +x /app/start.sh
+[program:xvfb]\n\
+command=Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset\n\
+priority=10\n\
+autorestart=true\n\
+\n\
+[program:gunicorn]\n\
+command=gunicorn --bind :8080 --workers 1 --threads 8 --timeout 120 app:app\n\
+priority=20\n\
+directory=/app\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0\n\
+autorestart=true\n\
+startretries=5\n' > /etc/supervisor/conf.d/supervisord.conf
+
+# Create a simplified startup script
+RUN echo '#!/bin/bash\n\
+echo "Starting supervisor..."\n\
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/start.sh && chmod +x /app/start.sh
 
 # Run the startup script
 CMD ["/app/start.sh"] 
